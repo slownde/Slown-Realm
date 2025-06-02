@@ -1,0 +1,37 @@
+name: Slown-Realm
+version: '1.0'
+main: de.syscall.SlownRealm
+api-version: '1.21'
+authors: [80x0]
+description: Realm System für das Slown Network
+website: https://slown.de
+depend: [Slown-Vectur, WorldEdit]
+
+permissions:
+  slownrealm.*:
+    description: Alle Permissions
+    default: op
+  slownrealm.admin:
+    description: Administrator Permissions
+    default: op
+  slownrealm.create:
+    description: Realms erstellen
+    default: true
+  slownrealm.visit:
+    description: Realms besuchen
+    default: true
+  slownrealm.template.forest:
+    description: Forest Template verwenden
+    default: false
+  slownrealm.template.mountain:
+    description: Mountain Template verwenden
+    default: false
+  slownrealm.template.ocean:
+    description: Ocean Template verwenden
+    default: false
+
+commands:
+  realm:
+    description: Realm System verwalten
+    usage: /realm [menu|create|delete|visit|home|invite|kick|settings|list|info|reload]
+    permission: slownrealm.create

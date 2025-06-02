@@ -1,0 +1,49 @@
+realm:
+  max-realms-per-player: 3
+  max-inactive-time: 1800000  # 30 minutes in milliseconds
+  
+  templates:
+    basic:
+      display-name: "Basic Island"
+      description: "A simple island to start with"
+      schematic-file: "basic.schem"
+      icon: "GRASS_BLOCK"
+      cost: 0.0
+      permission: null
+      enabled: true
+    
+    desert:
+      display-name: "Desert Oasis"
+      description: "A desert themed realm with oasis"
+      schematic-file: "desert.schem"
+      icon: "SAND"
+      cost: 100.0
+      permission: null
+      enabled: true
+    
+    forest:
+      display-name: "Forest Grove"
+      description: "A lush forest environment"
+      schematic-file: "forest.schem"
+      icon: "OAK_LOG"
+      cost: 200.0
+      permission: "slownrealm.template.forest"
+      enabled: true
+    
+    mountain:
+      display-name: "Mountain Peak"
+      description: "A high mountain with caves"
+      schematic-file: "mountain.schem"
+      icon: "STONE"
+      cost: 500.0
+      permission: "slownrealm.template.mountain"
+      enabled: true
+    
+    ocean:
+      display-name: "Ocean Deep"
+      description: "An underwater realm experience"
+      schematic-file: "ocean.schem"
+      icon: "WATER_BUCKET"
+      cost: 750.0
+      permission: "slownrealm.template.ocean"
+      enabled: true
