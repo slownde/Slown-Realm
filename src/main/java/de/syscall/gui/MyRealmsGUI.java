@@ -19,6 +19,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 
@@ -33,7 +34,9 @@ public class MyRealmsGUI {
     }
 
     public void open() {
+        plugin.getLogger().info("Opening MyRealmsGUI for player: " + player.getName());
         List<Item> realmItems = getPlayerRealms();
+        plugin.getLogger().info("Realm items count: " + realmItems.size());
 
         Gui gui = PagedGui.items()
                 .setStructure(
@@ -57,13 +60,26 @@ public class MyRealmsGUI {
                 .setGui(gui)
                 .build()
                 .open();
+
+        plugin.getLogger().info("MyRealmsGUI opened successfully");
     }
 
     private List<Item> getPlayerRealms() {
+        plugin.getLogger().info("Getting player realms for: " + player.getName());
         List<Item> realmItems = new ArrayList<>();
 
-        plugin.getRealmManager().getPlayerOwnedRealms(player.getUniqueId())
-                .forEach(realm -> realmItems.add(new RealmItem(realm)));
+        Collection<Realm> playerRealms = plugin.getRealmManager().getPlayerOwnedRealms(player.getUniqueId());
+        plugin.getLogger().info("Player owned realms count: " + playerRealms.size());
+
+        for (Realm realm : playerRealms) {
+            plugin.getLogger().info("Adding realm to GUI: " + realm.getName());
+            realmItems.add(new RealmItem(realm));
+        }
+
+        if (realmItems.isEmpty()) {
+            plugin.getLogger().info("No realms found, adding NoRealmsItem");
+            realmItems.add(new NoRealmsItem());
+        }
 
         return realmItems;
     }
@@ -131,10 +147,12 @@ public class MyRealmsGUI {
 
         public RealmItem(Realm realm) {
             this.realm = realm;
+            plugin.getLogger().info("Created RealmItem for: " + realm.getName());
         }
 
         @Override
         public ItemProvider getItemProvider() {
+            plugin.getLogger().info("Getting ItemProvider for realm: " + realm.getName());
             List<String> lore = buildRealmLore();
 
             return new ItemBuilder(Material.GRASS_BLOCK)
@@ -181,6 +199,8 @@ public class MyRealmsGUI {
 
         @Override
         public void handleClick(@NotNull ClickType clickType, @NotNull Player player, @NotNull InventoryClickEvent event) {
+            plugin.getLogger().info("Realm clicked: " + realm.getName() + " | Click type: " + clickType);
+
             switch (clickType) {
                 case LEFT -> handleTeleport();
                 case RIGHT -> handleManage();
@@ -189,17 +209,43 @@ public class MyRealmsGUI {
         }
 
         private void handleTeleport() {
+            plugin.getLogger().info("Teleporting to realm: " + realm.getName());
             player.closeInventory();
             player.sendMessage(ColorUtil.component("§7Teleportiere zu Realm §6" + realm.getName() + "§7..."));
             plugin.getRealmManager().teleportToRealm(player, realm.getRealmId());
         }
 
         private void handleManage() {
+            plugin.getLogger().info("Opening management for realm: " + realm.getName());
             new RealmManageGUI(plugin, player, realm).open();
         }
 
         private void handleDelete() {
+            plugin.getLogger().info("Opening delete confirmation for realm: " + realm.getName());
             new RealmDeleteConfirmGUI(plugin, player, realm).open();
+        }
+    }
+
+    private static class NoRealmsItem extends AbstractItem {
+        @Override
+        public ItemProvider getItemProvider() {
+            return new ItemBuilder(Material.BARRIER)
+                    .setDisplayName("§cKeine Realms")
+                    .setLegacyLore(List.of(
+                            "§7Du hast noch keine",
+                            "§7Realms erstellt",
+                            "",
+                            "§7Verwende das Hauptmenü",
+                            "§7um dein erstes Realm",
+                            "§7zu erstellen!",
+                            "",
+                            "§eZurück zum Hauptmenü"
+                    ));
+        }
+
+        @Override
+        public void handleClick(@NotNull ClickType clickType, @NotNull Player player, @NotNull InventoryClickEvent event) {
+            player.sendMessage(ColorUtil.component("§7Du hast noch keine Realms. Erstelle dein erstes Realm!"));
         }
     }
 }

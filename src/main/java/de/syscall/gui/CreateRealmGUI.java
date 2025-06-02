@@ -19,6 +19,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class CreateRealmGUI {
 
@@ -31,7 +32,9 @@ public class CreateRealmGUI {
     }
 
     public void open() {
+        plugin.getLogger().info("Opening CreateRealmGUI for player: " + player.getName());
         List<Item> templateItems = getAvailableTemplates();
+        plugin.getLogger().info("Template items count: " + templateItems.size());
 
         Gui gui = PagedGui.items()
                 .setStructure(
@@ -55,21 +58,57 @@ public class CreateRealmGUI {
                 .setGui(gui)
                 .build()
                 .open();
+
+        plugin.getLogger().info("CreateRealmGUI opened successfully");
     }
 
     private List<Item> getAvailableTemplates() {
+        plugin.getLogger().info("Getting available templates for GUI...");
         List<Item> templateItems = new ArrayList<>();
 
-        plugin.getSchematicManager().getAllTemplates().values().stream()
-                .filter(this::canUseTemplate)
-                .forEach(template -> templateItems.add(new TemplateItem(template)));
+        Map<String, RealmTemplate> allTemplates = plugin.getSchematicManager().getAllTemplates();
+        plugin.getLogger().info("All templates from manager: " + allTemplates.size());
+
+        Map<String, RealmTemplate> availableTemplates = plugin.getSchematicManager().getAvailableTemplates();
+        plugin.getLogger().info("Available templates from manager: " + availableTemplates.size());
+
+        for (RealmTemplate template : availableTemplates.values()) {
+            plugin.getLogger().info("Processing template: " + template.getName());
+
+            if (canUseTemplate(template)) {
+                plugin.getLogger().info("  -> Can use template, adding to GUI");
+                templateItems.add(new TemplateItem(template));
+            } else {
+                plugin.getLogger().info("  -> Cannot use template (permission or other restriction)");
+            }
+        }
+
+        plugin.getLogger().info("Final template items count: " + templateItems.size());
+
+        if (templateItems.isEmpty()) {
+            plugin.getLogger().warning("No templates available, adding NoTemplatesItem");
+            templateItems.add(new NoTemplatesItem());
+        }
 
         return templateItems;
     }
 
     private boolean canUseTemplate(RealmTemplate template) {
-        return template.isEnabled() &&
-                (template.getPermission() == null || player.hasPermission(template.getPermission()));
+        plugin.getLogger().info("Checking if player can use template: " + template.getName());
+
+        boolean enabled = template.isEnabled();
+        plugin.getLogger().info("  Enabled: " + enabled);
+
+        boolean hasFile = plugin.getSchematicManager().hasSchematicFile(template.getName());
+        plugin.getLogger().info("  Has file: " + hasFile);
+
+        boolean hasPermission = template.getPermission() == null || player.hasPermission(template.getPermission());
+        plugin.getLogger().info("  Has permission: " + hasPermission + " (required: " + template.getPermission() + ")");
+
+        boolean canUse = enabled && hasFile && hasPermission;
+        plugin.getLogger().info("  Final result: " + canUse);
+
+        return canUse;
     }
 
     private static class BackgroundItem extends AbstractItem {
@@ -134,10 +173,12 @@ public class CreateRealmGUI {
 
         public TemplateItem(RealmTemplate template) {
             this.template = template;
+            plugin.getLogger().info("Created TemplateItem for: " + template.getName());
         }
 
         @Override
         public ItemProvider getItemProvider() {
+            plugin.getLogger().info("Getting ItemProvider for template: " + template.getName());
             List<String> lore = buildTemplateLore();
 
             return new ItemBuilder(template.getIcon())
@@ -184,14 +225,19 @@ public class CreateRealmGUI {
 
         @Override
         public void handleClick(@NotNull ClickType clickType, @NotNull Player player, @NotNull InventoryClickEvent event) {
+            plugin.getLogger().info("Template clicked: " + template.getName());
+
             if (!canCreateRealm()) {
+                plugin.getLogger().info("Cannot create realm - limit reached");
                 return;
             }
 
             if (!canAffordTemplate()) {
+                plugin.getLogger().info("Cannot afford template");
                 return;
             }
 
+            plugin.getLogger().info("Opening RealmNameInputGUI");
             new RealmNameInputGUI(plugin, player, template).open();
         }
 
@@ -216,6 +262,30 @@ public class CreateRealmGUI {
                 }
             }
             return true;
+        }
+    }
+
+    private static class NoTemplatesItem extends AbstractItem {
+        @Override
+        public ItemProvider getItemProvider() {
+            return new ItemBuilder(Material.BARRIER)
+                    .setDisplayName("§cKeine Templates verfügbar")
+                    .setLegacyLore(List.of(
+                            "§7Es sind keine gültigen",
+                            "§7Templates verfügbar",
+                            "",
+                            "§7Mögliche Gründe:",
+                            "§c• Schematic-Dateien fehlen",
+                            "§c• Keine Berechtigung",
+                            "§c• Templates deaktiviert",
+                            "",
+                            "§7Kontaktiere einen Admin"
+                    ));
+        }
+
+        @Override
+        public void handleClick(@NotNull ClickType clickType, @NotNull Player player, @NotNull InventoryClickEvent event) {
+            player.sendMessage(ColorUtil.component("§cKeine Templates verfügbar! Kontaktiere einen Admin."));
         }
     }
 }
