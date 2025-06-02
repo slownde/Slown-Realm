@@ -184,33 +184,7 @@ public class SchematicManager {
                     plugin.getLogger().info("Clipboard loaded, dimensions: " + clipboard.getDimensions());
                 }
 
-                CompletableFuture<Boolean> result = new CompletableFuture<>();
-
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    try {
-                        try (EditSession editSession = WorldEdit.getInstance().newEditSession(BukkitAdapter.adapt(location.getWorld()))) {
-                            editSession.setFastMode(true);
-
-                            Operation operation = new ClipboardHolder(clipboard)
-                                    .createPaste(editSession)
-                                    .to(BlockVector3.at(location.getX(), location.getY(), location.getZ()))
-                                    .ignoreAirBlocks(false)
-                                    .build();
-
-                            Operations.complete(operation);
-                            editSession.flushSession();
-
-                            plugin.getLogger().info("Schematic pasted successfully: " + schematicName);
-                            result.complete(true);
-                        }
-                    } catch (Exception e) {
-                        plugin.getLogger().severe("Error pasting schematic " + schematicName + " in main thread: " + e.getMessage());
-                        e.printStackTrace();
-                        result.complete(false);
-                    }
-                });
-
-                return result.get();
+                return pasteClipboardAsync(clipboard, location, schematicName);
 
             } catch (Exception e) {
                 plugin.getLogger().severe("Error preparing schematic " + schematicName + ": " + e.getMessage());
@@ -218,6 +192,48 @@ public class SchematicManager {
                 return false;
             }
         });
+    }
+
+    private boolean pasteClipboardAsync(Clipboard clipboard, Location location, String schematicName) {
+        try {
+            CompletableFuture<Boolean> pasteResult = CompletableFuture.supplyAsync(() -> {
+                try (EditSession editSession = WorldEdit.getInstance().newEditSession(BukkitAdapter.adapt(location.getWorld()))) {
+
+                    editSession.setFastMode(true);
+                    editSession.setReorderMode(EditSession.ReorderMode.MULTI_STAGE);
+
+                    Operation operation = new ClipboardHolder(clipboard)
+                            .createPaste(editSession)
+                            .to(BlockVector3.at(location.getX(), location.getY(), location.getZ()))
+                            .ignoreAirBlocks(false)
+                            .build();
+
+                    long startTime = System.currentTimeMillis();
+
+                    plugin.getLogger().info("Starting paste operation for: " + schematicName);
+                    Operations.complete(operation);
+
+                    long pasteTime = System.currentTimeMillis() - startTime;
+                    plugin.getLogger().info("Paste operation completed in " + pasteTime + "ms");
+
+                    editSession.flushSession();
+                    plugin.getLogger().info("Schematic pasted successfully: " + schematicName);
+
+                    return true;
+                } catch (Exception e) {
+                    plugin.getLogger().severe("Error pasting schematic " + schematicName + ": " + e.getMessage());
+                    e.printStackTrace();
+                    return false;
+                }
+            });
+
+            return pasteResult.get();
+
+        } catch (Exception e) {
+            plugin.getLogger().severe("Error in async paste for " + schematicName + ": " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
     }
 
     public RealmTemplate getTemplate(String name) {
