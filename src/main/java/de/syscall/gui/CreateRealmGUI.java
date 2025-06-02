@@ -69,7 +69,7 @@ public class CreateRealmGUI {
         Map<String, RealmTemplate> allTemplates = plugin.getSchematicManager().getAllTemplates();
         plugin.getLogger().info("All templates from manager: " + allTemplates.size());
 
-        Map<String, RealmTemplate> availableTemplates = plugin.getSchematicManager().getAvailableTemplates();
+        Map<String, RealmTemplate> availableTemplates = plugin.getSchematicManager().getAllTemplates();
         plugin.getLogger().info("Available templates from manager: " + availableTemplates.size());
 
         for (RealmTemplate template : availableTemplates.values()) {
@@ -99,13 +99,10 @@ public class CreateRealmGUI {
         boolean enabled = template.isEnabled();
         plugin.getLogger().info("  Enabled: " + enabled);
 
-        boolean hasFile = plugin.getSchematicManager().hasSchematicFile(template.getName());
-        plugin.getLogger().info("  Has file: " + hasFile);
-
         boolean hasPermission = template.getPermission() == null || player.hasPermission(template.getPermission());
         plugin.getLogger().info("  Has permission: " + hasPermission + " (required: " + template.getPermission() + ")");
 
-        boolean canUse = enabled && hasFile && hasPermission;
+        boolean canUse = enabled && hasPermission;
         plugin.getLogger().info("  Final result: " + canUse);
 
         return canUse;

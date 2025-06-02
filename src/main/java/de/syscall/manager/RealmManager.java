@@ -31,7 +31,6 @@ public class RealmManager {
         this.gridPositions = new ConcurrentHashMap<>();
         this.usedGridPositions = ConcurrentHashMap.newKeySet();
         startCleanupTask();
-
         plugin.getLogger().info("RealmManager initialized");
     }
 
@@ -45,27 +44,25 @@ public class RealmManager {
     }
 
     public CompletableFuture<Realm> createRealm(Player player, String name, String templateName) {
-        plugin.getLogger().info("Creating realm for player " + player.getName() + ": " + name + " with template " + templateName);
-
         return CompletableFuture.supplyAsync(() -> {
             UUID realmId = UUID.randomUUID();
+            plugin.getLogger().info("Creating realm for player " + player.getName() + ": " + name + " with template " + templateName);
             plugin.getLogger().info("Generated realm ID: " + realmId);
 
             Realm realm = new Realm(realmId, player.getUniqueId(), name, templateName);
 
             int[] gridPos = findAvailableGridPosition();
-            plugin.getLogger().info("Grid position: " + gridPos[0] + ", " + gridPos[1]);
-
             realm.setGridX(gridPos[0]);
             realm.setGridZ(gridPos[1]);
+            plugin.getLogger().info("Grid position: " + gridPos[0] + ", " + gridPos[1]);
 
             Location pasteLocation = calculatePasteLocation(gridPos[0], gridPos[1]);
-            plugin.getLogger().info("Paste location: " + pasteLocation);
             realm.setPasteLocation(pasteLocation);
+            plugin.getLogger().info("Paste location: " + pasteLocation);
 
-            Location spawnLocation = pasteLocation.clone().add(128, 64, 128);
-            plugin.getLogger().info("Spawn location: " + spawnLocation);
+            Location spawnLocation = pasteLocation.clone().add(128, 100, 128);
             realm.setSpawnLocation(spawnLocation);
+            plugin.getLogger().info("Spawn location: " + spawnLocation);
 
             plugin.getRealmStorage().saveRealm(realm);
             plugin.getLogger().info("Realm saved to storage");
@@ -75,9 +72,9 @@ public class RealmManager {
     }
 
     public CompletableFuture<Boolean> deleteRealm(UUID realmId) {
-        plugin.getLogger().info("Deleting realm: " + realmId);
-
         return CompletableFuture.supplyAsync(() -> {
+            plugin.getLogger().info("Deleting realm: " + realmId);
+
             Realm realm = loadedRealms.get(realmId);
             if (realm == null) {
                 plugin.getLogger().info("Realm not in memory, loading from storage");
@@ -88,68 +85,83 @@ public class RealmManager {
                 plugin.getLogger().info("Unloading and deleting realm: " + realm.getName());
                 unloadRealm(realmId);
                 releaseGridPosition(realm.getGridX(), realm.getGridZ());
-                boolean deleted = plugin.getRealmStorage().deleteRealm(realmId);
-                plugin.getLogger().info("Realm deletion result: " + deleted);
-                return deleted;
+                boolean result = plugin.getRealmStorage().deleteRealm(realmId);
+                plugin.getLogger().info("Realm deletion result: " + result);
+                return result;
             }
-            plugin.getLogger().warning("Realm not found for deletion: " + realmId);
             return false;
         });
     }
 
     public CompletableFuture<Void> loadRealm(UUID realmId) {
-        plugin.getLogger().info("Loading realm: " + realmId);
+        CompletableFuture<Void> future = new CompletableFuture<>();
 
-        return CompletableFuture.runAsync(() -> {
-            if (loadedRealms.containsKey(realmId)) {
-                plugin.getLogger().info("Realm already loaded: " + realmId);
-                return;
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                if (loadedRealms.containsKey(realmId)) {
+                    future.complete(null);
+                    return;
+                }
+
+                plugin.getLogger().info("Loading realm: " + realmId);
+                Realm realm = plugin.getRealmStorage().loadRealm(realmId);
+                if (realm == null) {
+                    plugin.getLogger().warning("Realm not found in storage: " + realmId);
+                    future.complete(null);
+                    return;
+                }
+
+                plugin.getLogger().info("Loaded realm from storage: " + realm.getName());
+
+                RealmTemplate template = plugin.getSchematicManager().getTemplate(realm.getTemplateName());
+                if (template == null) {
+                    plugin.getLogger().warning("Template not found: " + realm.getTemplateName());
+                    future.complete(null);
+                    return;
+                }
+
+                plugin.getLogger().info("Get template " + realm.getTemplateName() + ": found");
+                plugin.getLogger().info("Found template: " + template.getDisplayName());
+
+                plugin.getSchematicManager().pasteSchematic(template.getSchematicFile(), realm.getPasteLocation())
+                        .thenAccept(success -> {
+                            if (success) {
+                                realm.setLoaded(true);
+                                loadedRealms.put(realmId, realm);
+                                plugin.getRealmStorage().saveRealm(realm);
+                                plugin.getLogger().info("Realm loaded and marked as loaded: " + realm.getName());
+                                future.complete(null);
+                            } else {
+                                plugin.getLogger().warning("Failed to paste schematic for realm: " + realm.getName());
+                                future.complete(null);
+                            }
+                        })
+                        .exceptionally(throwable -> {
+                            plugin.getLogger().severe("Exception while pasting schematic: " + throwable.getMessage());
+                            throwable.printStackTrace();
+                            future.complete(null);
+                            return null;
+                        });
+
+            } catch (Exception e) {
+                plugin.getLogger().severe("Exception in loadRealm: " + e.getMessage());
+                e.printStackTrace();
+                future.complete(null);
             }
-
-            Realm realm = plugin.getRealmStorage().loadRealm(realmId);
-            if (realm == null) {
-                plugin.getLogger().warning("Failed to load realm from storage: " + realmId);
-                return;
-            }
-
-            plugin.getLogger().info("Loaded realm from storage: " + realm.getName());
-
-            RealmTemplate template = plugin.getSchematicManager().getTemplate(realm.getTemplateName());
-            if (template == null) {
-                plugin.getLogger().warning("Template not found for realm: " + realm.getTemplateName());
-                return;
-            }
-
-            plugin.getLogger().info("Found template: " + template.getDisplayName());
-
-            plugin.getSchematicManager().pasteSchematic(template.getSchematicFile(), realm.getPasteLocation())
-                    .thenRun(() -> {
-                        plugin.getLogger().info("Schematic pasted successfully for realm: " + realm.getName());
-                        realm.setLoaded(true);
-                        loadedRealms.put(realmId, realm);
-                        plugin.getRealmStorage().saveRealm(realm);
-                        plugin.getLogger().info("Realm marked as loaded: " + realm.getName());
-                    })
-                    .exceptionally(throwable -> {
-                        plugin.getLogger().severe("Failed to paste schematic for realm: " + realm.getName());
-                        throwable.printStackTrace();
-                        return null;
-                    });
         });
+
+        return future;
     }
 
     public void unloadRealm(UUID realmId) {
         plugin.getLogger().info("Unloading realm: " + realmId);
-
         Realm realm = loadedRealms.remove(realmId);
         if (realm != null) {
-            plugin.getLogger().info("Unloaded realm: " + realm.getName());
             realm.setLoaded(false);
             plugin.getRealmStorage().saveRealm(realm);
 
             for (Player player : plugin.getServer().getOnlinePlayers()) {
                 if (isPlayerInRealm(player, realmId)) {
-                    plugin.getLogger().info("Teleporting player " + player.getName() + " out of unloaded realm");
                     player.teleport(plugin.getServer().getWorlds().get(0).getSpawnLocation());
                 }
             }
@@ -157,75 +169,63 @@ public class RealmManager {
     }
 
     public CompletableFuture<Void> teleportToRealm(Player player, UUID realmId) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+
         plugin.getLogger().info("Teleporting player " + player.getName() + " to realm: " + realmId);
 
-        return CompletableFuture.runAsync(() -> {
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             Realm realm = loadedRealms.get(realmId);
+
             if (realm == null) {
                 plugin.getLogger().info("Realm not loaded, loading first...");
-
-                realm = plugin.getRealmStorage().loadRealm(realmId);
-                if (realm == null) {
-                    plugin.getLogger().severe("Failed to load realm from storage: " + realmId);
-                    return;
-                }
-
-                plugin.getLogger().info("Checking access for player " + player.getName() + " to realm " + realm.getName());
-                if (!realm.hasAccess(player.getUniqueId())) {
-                    plugin.getLogger().warning("Player " + player.getName() + " has no access to realm " + realm.getName());
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
-                        player.sendMessage("§cDu hast keinen Zugriff auf dieses Realm!");
-                    });
-                    return;
+                Realm realmFromStorage = plugin.getRealmStorage().loadRealm(realmId);
+                if (realmFromStorage != null) {
+                    plugin.getLogger().info("Checking access for player " + player.getName() + " to realm " + realmFromStorage.getName());
                 }
 
                 loadRealm(realmId).thenRun(() -> {
                     Realm loadedRealm = loadedRealms.get(realmId);
-                    if (loadedRealm != null) {
-                        plugin.getLogger().info("Realm loaded, teleporting player");
+                    if (loadedRealm != null && loadedRealm.hasAccess(player.getUniqueId())) {
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
                             player.teleport(loadedRealm.getSpawnLocation());
                             playerToRealm.put(player.getUniqueId(), realmId);
                             loadedRealm.updateLastAccessed();
-                            player.sendMessage("§aWillkommen in deinem Realm: §6" + loadedRealm.getName());
+                            future.complete(null);
                         });
                     } else {
-                        plugin.getLogger().warning("Realm loading failed");
-                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                            player.sendMessage("§cFehler beim Laden des Realms!");
-                        });
+                        plugin.getLogger().warning("Realm loading failed or access denied");
+                        future.complete(null);
                     }
+                }).exceptionally(throwable -> {
+                    plugin.getLogger().severe("Failed to load realm for teleport: " + throwable.getMessage());
+                    throwable.printStackTrace();
+                    future.complete(null);
+                    return null;
                 });
+
             } else if (realm.hasAccess(player.getUniqueId())) {
-                plugin.getLogger().info("Realm already loaded, teleporting player");
-                Realm finalRealm = realm;
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    player.teleport(finalRealm.getSpawnLocation());
+                    player.teleport(realm.getSpawnLocation());
                     playerToRealm.put(player.getUniqueId(), realmId);
-                    finalRealm.updateLastAccessed();
-                    player.sendMessage("§aWillkommen in deinem Realm: §6" + finalRealm.getName());
+                    realm.updateLastAccessed();
+                    future.complete(null);
                 });
             } else {
-                plugin.getLogger().warning("Player " + player.getName() + " has no access to realm " + realmId);
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    player.sendMessage("§cDu hast keinen Zugriff auf dieses Realm!");
-                });
+                future.complete(null);
             }
         });
+
+        return future;
     }
 
     public void handlePlayerQuit(Player player) {
-        UUID removedRealm = playerToRealm.remove(player.getUniqueId());
-        if (removedRealm != null) {
-            plugin.getLogger().info("Player " + player.getName() + " quit, removed from realm tracking");
-        }
+        playerToRealm.remove(player.getUniqueId());
     }
 
     public void handleWorldChange(Player player) {
         UUID currentRealm = playerToRealm.get(player.getUniqueId());
         if (currentRealm != null && !isPlayerInRealm(player, currentRealm)) {
             playerToRealm.remove(player.getUniqueId());
-            plugin.getLogger().info("Player " + player.getName() + " left realm world, removed from tracking");
         }
     }
 
@@ -256,13 +256,11 @@ public class RealmManager {
     }
 
     public void updateRealm(Realm realm) {
-        plugin.getLogger().info("Updating realm: " + realm.getName());
         loadedRealms.put(realm.getRealmId(), realm);
         plugin.getRealmStorage().saveRealm(realm);
     }
 
     private int[] findAvailableGridPosition() {
-        int x = 0, z = 0;
         int radius = 0;
 
         while (true) {
@@ -304,7 +302,6 @@ public class RealmManager {
                     .anyMatch(player -> isPlayerInRealm(player, realm.getRealmId()));
 
             if (!hasPlayers && (currentTime - realm.getLastAccessed()) > maxInactiveTime) {
-                plugin.getLogger().info("Cleaning up inactive realm: " + realm.getName());
                 unloadRealm(realm.getRealmId());
                 return true;
             }
@@ -313,7 +310,6 @@ public class RealmManager {
     }
 
     public void shutdown() {
-        plugin.getLogger().info("Shutting down RealmManager");
         if (cleanupTask != null) {
             cleanupTask.cancel();
         }
@@ -321,6 +317,5 @@ public class RealmManager {
         for (UUID realmId : new HashSet<>(loadedRealms.keySet())) {
             unloadRealm(realmId);
         }
-        plugin.getLogger().info("RealmManager shutdown complete");
     }
 }
